@@ -1,0 +1,48 @@
+# Python bytecode and caches
+__pycache__/
+*.py[cod]
+*$py.class
+
+# Virtual environments
+.venv/
+venv/
+env/
+ENV/
+
+# Build and packaging artifacts
+build/
+dist/
+*.egg-info/
+.eggs/
+
+# Test and coverage artifacts
+.pytest_cache/
+.coverage
+.coverage.*
+htmlcov/
+.mypy_cache/
+.ruff_cache/
+
+# Logs and runtime files
+*.log
+*.pid
+
+# Environment variables and local config
+.env
+.env.*
+!.env.example
+
+# Jupyter and notebook checkpoints
+.ipynb_checkpoints/
+
+# OS/editor files
+.DS_Store
+Thumbs.db
+.vscode/
+.idea/
+
+# Local data/artifacts (adjust if you intend to commit them)
+*.sqlite3
+*.db
+chroma/
+chroma_db/
