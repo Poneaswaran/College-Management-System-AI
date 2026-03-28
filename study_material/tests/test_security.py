@@ -47,3 +47,12 @@ def test_verify_internal_headers_secret_optional_when_disabled() -> None:
         INTERNAL_API_SECRET="",
     )
     verify_internal_headers("django", None, settings)
+
+
+def test_verify_internal_headers_validation_can_be_disabled() -> None:
+    settings = Settings(
+        INTERNAL_HEADERS_ENABLED=False,
+        INTERNAL_SOURCE_VALUE="django",
+        INTERNAL_API_SECRET="secret",
+    )
+    verify_internal_headers(None, None, settings)

@@ -13,6 +13,9 @@ def verify_internal_headers(
 ) -> None:
     """Validate trusted caller headers from Django."""
 
+    if not settings.INTERNAL_HEADERS_ENABLED:
+        return
+
     if not source_header:
         raise AppError(
             status_code=401,

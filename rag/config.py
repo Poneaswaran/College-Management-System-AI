@@ -18,6 +18,7 @@ class Settings(BaseSettings):
     APP_ENV: Literal["development", "staging", "production", "test"] = "development"
     LOG_LEVEL: str = "INFO"
 
+    INTERNAL_HEADERS_ENABLED: bool = True
     INTERNAL_SOURCE_VALUE: str = "django-college-management"
     INTERNAL_ALLOWED_SOURCES: list[str] = Field(default_factory=list)
     INTERNAL_API_SECRET: str = "change-me"
