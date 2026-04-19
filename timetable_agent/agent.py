@@ -24,6 +24,7 @@ from timetable_agent.prompts import (
     build_audit_prompt,
     build_chat_prompt,
     build_conflict_explanation_prompt,
+    build_explain_why_not_prompt,
 )
 from timetable_agent.schemas import (
     AuditFinding,
@@ -200,6 +201,51 @@ class TimetableAgent:
             summary=data.get("summary", "No summary provided."),
             findings=findings,
             score=int(data.get("score", 0)),
+        )
+
+    # ─── Explain Why Not ───────────────────────────────────────────────────────
+
+    async def explain_why_not(
+        self,
+        *,
+        message: str,
+        history: list[dict],
+        timetable_state: dict,
+        diagnostic_context: dict,
+    ) -> TimetableChatResponse:
+        """
+        Answer a negative-space diagnostic question.
+
+        Uses the full timetable state + pre-computed diagnostic_context
+        (room occupancy, section schedule) so the LLM can reason from
+        structured facts rather than making assumptions.
+        """
+        prompt = build_explain_why_not_prompt(
+            message=message,
+            history=history,
+            timetable_state=timetable_state,
+            diagnostic_context=diagnostic_context,
+        )
+
+        raw = await self.llm._generate(prompt)
+        logger.debug("explain_why_not raw=%r", raw[:200])
+
+        try:
+            cleaned = _extract_json_block(raw)
+            data = json.loads(cleaned)
+        except json.JSONDecodeError:
+            data = {
+                "answer": raw,
+                "proposed_constraints": [],
+                "confidence": "low",
+                "requires_confirmation": False,
+            }
+
+        return TimetableChatResponse(
+            answer=data.get("answer", raw),
+            proposed_constraints=[],  # diagnostic answers never propose changes
+            confidence=data.get("confidence", "medium"),
+            requires_confirmation=False,
         )
 
 

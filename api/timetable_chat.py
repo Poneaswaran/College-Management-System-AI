@@ -18,6 +18,8 @@ from timetable_agent.schemas import (
     TimetableChatRequest,
     TimetableChatResponse,
 )
+from pydantic import BaseModel
+from typing import Any
 
 router = APIRouter(prefix="/timetable", tags=["timetable_ai"])
 logger = get_logger(__name__)
@@ -112,4 +114,54 @@ async def explain_conflicts(
         error_messages=errors,
         timetable_state=payload.timetable_state,
     )
+    return result
+
+
+# ── Explain Why Not ────────────────────────────────────────────────────────────
+
+class ExplainWhyNotRequest(BaseModel):
+    """
+    Payload Django's ExplainWhyNotView sends after enriching the request
+    with pre-computed diagnostic facts.
+    """
+    message: str
+    semester_id: int
+    timetable_state: dict[str, Any]
+    diagnostic_context: dict[str, Any] = {}
+    history: list[dict] = []
+
+
+@router.post("/explain-why-not", response_model=TimetableChatResponse)
+async def explain_why_not(
+    payload: ExplainWhyNotRequest,
+    _: None = Depends(validate_internal_request),
+    agent=Depends(get_timetable_agent),
+) -> TimetableChatResponse:
+    """
+    Answer a negative-space diagnostic question.
+
+    Django pre-enriches the payload with structured facts about the
+    specific room, section, or period being asked about, so the LLM
+    can reason from facts rather than inference.
+
+    Example questions handled:
+      - "Why couldn't Section CSE-4A get Room 101 on Monday P3?"
+      - "Why is Dr. Ramesh scheduled in two places on Wednesday P5?"
+      - "Why does CSE-3B always end up without a room on Fridays?"
+    """
+    logger.info(
+        "explain_why_not message_len=%d semester_id=%d diag_keys=%s",
+        len(payload.message),
+        payload.semester_id,
+        list(payload.diagnostic_context.keys()),
+    )
+
+    result = await agent.explain_why_not(
+        message=payload.message,
+        history=payload.history,
+        timetable_state=payload.timetable_state,
+        diagnostic_context=payload.diagnostic_context,
+    )
+
+    logger.info("explain_why_not confidence=%s", result.confidence)
     return result

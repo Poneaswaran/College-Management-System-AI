@@ -161,3 +161,81 @@ def build_audit_prompt(timetable_state: dict) -> str:
         "}\n"
         "Assistant:"
     )
+
+
+def build_explain_why_not_prompt(
+    message: str,
+    history: list[dict],
+    timetable_state: dict,
+    diagnostic_context: dict,
+) -> str:
+    """
+    Build a deep-dive diagnostic prompt for negative-space questions.
+
+    Unlike the standard chat prompt, this injects:
+      • The FULL schedule (not capped at 30 entries)
+      • Pre-computed ``diagnostic_context`` with room occupancy and
+        section-specific schedule data so the LLM doesn't have to search.
+
+    Parameters
+    ----------
+    message            : Admin's "why couldn't ..." question
+    history            : Previous turns for multi-turn context
+    timetable_state    : Full snapshot from TimetableStateView
+    diagnostic_context : Pre-computed facts from ExplainWhyNotView
+                         {room_occupancy, section_schedule, ...}
+    """
+    import json
+
+    # Include the full schedule — this query needs all the data
+    full_schedule  = timetable_state.get("schedule", [])
+    rooms          = timetable_state.get("rooms", [])
+    sections       = timetable_state.get("sections", [])
+    overflow       = timetable_state.get("overflow_summary", [])
+    non_room_slots = timetable_state.get("non_room_slots", [])
+
+    state_str = json.dumps(
+        {
+            "semester": timetable_state.get("semester"),
+            "meta": timetable_state.get("meta"),
+            "rooms": rooms,
+            "sections": sections,
+            "schedule": full_schedule,
+            "non_room_slots": non_room_slots,
+            "overflow_summary": overflow,
+        },
+        indent=2,
+        default=str,
+    )
+
+    diag_str = json.dumps(diagnostic_context, indent=2, default=str) if diagnostic_context else "{}"
+
+    history_str = ""
+    for turn in history[-6:]:
+        role = turn.get("role", "user").capitalize()
+        history_str += f"\n{role}: {turn.get('content', '')}"
+
+    return (
+        f"{SYSTEM_PROMPT}\n\n"
+        "You are answering a DIAGNOSTIC QUESTION about why a specific scheduling "
+        "outcome occurred. Use ONLY the data provided below — do NOT guess or "
+        "invent any room numbers, section names, faculty names, or IDs.\n\n"
+        "YOUR TASK\n"
+        "  Examine the timetable state and the pre-computed diagnostic context.\n"
+        "  Identify the EXACT algorithmic bottleneck that caused the situation "
+        "  described in the admin's question. Possible root causes include:\n"
+        "    • Room already booked by another section at that period\n"
+        "    • Room capacity too small for the section strength\n"
+        "    • Room type mismatch (e.g. theory room requested for lab)\n"
+        "    • Faculty double-booked at that slot\n"
+        "    • Section already has a class (section conflict)\n"
+        "    • Room under maintenance at that time\n"
+        "    • Priority ordering caused higher-priority section to claim the room first\n\n"
+        f"FULL TIMETABLE STATE:\n```json\n{state_str}\n```\n\n"
+        f"PRE-COMPUTED DIAGNOSTIC FACTS:\n```json\n{diag_str}\n```\n\n"
+        f"CONVERSATION SO FAR:{history_str}\n\n"
+        f"Admin: {message}\n\n"
+        "Assistant (respond as the JSON object from RESPONSE FORMAT — be specific, "
+        "cite actual section/room/faculty names from the data, no vague answers):"
+    )
+
