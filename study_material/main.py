@@ -8,6 +8,7 @@ from api.delete import router as delete_router
 from api.health import router as health_router
 from api.ingest import router as ingest_router
 from api.query import router as query_router
+from api.timetable_chat import router as timetable_router
 from rag.chunker import TextChunker
 from rag.config import Settings, get_settings
 from rag.errors import AppError, build_error_payload
@@ -17,6 +18,7 @@ from rag.vector_store import ChromaVectorStore
 from services.embedder import create_embedder
 from services.llm_service import create_llm_service
 from services.rag_service import RAGService
+from timetable_agent.agent import create_timetable_agent
 
 logger = get_logger(__name__)
 
@@ -43,18 +45,20 @@ def create_app(settings: Settings | None = None, rag_service: RAGService | None 
     configure_logging(settings.LOG_LEVEL)
 
     app = FastAPI(
-        title="Study Material RAG Service",
-        version="1.0.0",
-        description="FastAPI AI worker for Django College Management System",
+        title="College Management AI Service",
+        version="2.0.0",
+        description="FastAPI AI worker — Study Material RAG + Timetable Copilot",
     )
 
     app.state.settings = settings
     app.state.rag_service = rag_service or build_rag_service(settings)
+    app.state.timetable_agent = create_timetable_agent(settings)
 
     app.include_router(health_router)
     app.include_router(ingest_router)
     app.include_router(query_router)
     app.include_router(delete_router)
+    app.include_router(timetable_router)
 
     @app.middleware("http")
     async def correlation_id_middleware(request: Request, call_next):
@@ -114,6 +118,10 @@ def create_app(settings: Settings | None = None, rag_service: RAGService | None 
         llm_service = getattr(app.state.rag_service, "llm_service", None)
         if llm_service and hasattr(llm_service, "aclose"):
             await llm_service.aclose()
+        # Also close timetable agent LLM client
+        agent = getattr(app.state, "timetable_agent", None)
+        if agent and hasattr(agent.llm, "aclose"):
+            await agent.llm.aclose()
 
     return app
 
