@@ -161,7 +161,6 @@ class TimetableAgent:
         """
         # Retrieve relevant memories
         memories = await self._get_relevant_memories(message, user_context)
-        message_with_memories = message + memories
 
         # TEMP DEBUG — remove after fix
         print(f"DEBUG LLM URL: {self.llm.settings.OLLAMA_URL}")
@@ -169,31 +168,38 @@ class TimetableAgent:
 
         system_prompt = f"""
 You are a timetable configuration assistant for a college management system.
-Your job is to extract a structured timetable grid from admin input.
+Your job is to extract a structured timetable grid TEMPLATE that will apply to a whole SEMESTER.
 
-You must collect ALL of the following before generating a grid:
-1. Class start time (day_start)
-2. Class end time (day_end)
-3. Lunch break start time and duration in minutes
-4. Period duration in minutes (e.g. 60 mins, 45 mins)
-5. Number of periods (can be auto-calculated; confirm with user)
+You must collect ALL of the following to build the semester structure:
+1. Academic Year (e.g., 2025-26)
+2. Class start time (day_start)
+3. Class end time (day_end)
+4. Lunch break start time and duration in minutes
+5. Number of periods (prioritize this over duration)
+6. Period duration (calculated or confirmed)
 
 Rules:
 - If any field is missing or ambiguous, ask ONE specific question at a time.
 - Do NOT assume lunch break time — always confirm it explicitly.
-- If the number of periods is not stated, CALCULATE it from the available time
-  after deducting lunch, then ASK the admin to confirm the count.
+- If the number of periods is known, PRIORITIZE it. Calculate the period duration automatically to fit exactly between day_start and day_end (after deducting lunch).
+- If the user provides a duration that contradicts the number of periods or day length, POLITELY ignore their duration and use your calculated one, explaining the math to the user.
 - Once all fields are collected, output a JSON block wrapped in <GRID_JSON>...</GRID_JSON>
   tags — do not output the JSON until ALL fields are confirmed.
 - To help me track progress, ALWAYS include a JSON block wrapped in <UPDATE_FIELDS>...</UPDATE_FIELDS> 
-  tags containing the current set of extracted fields (e.g. {{"day_start": "09:30 AM"}}).
+  tags containing the current set of extracted fields. Supported keys: "day_start", "day_end", "lunch_start", "lunch_duration_mins", "period_duration_mins", "num_periods".
 - Be concise, professional, and ask one question at a time.
+- IMPORTANT: This is a TEMPLATE for the semester. Do NOT ask for specific calendar dates or daily attendance dates. 
+- You only need the "Academic Year" (e.g. 2025-26).
 - JSON data must be strictly valid. Do NOT include comments (// or /*) inside JSON blocks.
 - CRITICAL: Never show JSON, code, or technical state to the user. All data MUST be wrapped in <UPDATE_FIELDS> or <GRID_JSON> tags.
-- If you show raw curly braces { } in your human reply, you have failed.
+- If you show raw curly braces {{ }} in your human reply, you have failed.
+- ALWAYS include a friendly human-readable response alongside your data tags, even if it is just a simple greeting or a status update.
 
 Current department: {department_name}
 Collected so far: {json.dumps(collected_fields, indent=2)}
+
+INSTITUTIONAL MEMORY (RULES TO FOLLOW):
+{memories if memories else "No specific rules found yet."}
         """
 
         # Format history for Ollama LLM
@@ -207,12 +213,8 @@ Collected so far: {json.dumps(collected_fields, indent=2)}
                 content = h.get("content", "")
             formatted_history.append({"role": role, "content": content})
 
-        # Prepend system prompt if it's not the first, or send it as the prompt
-        prompt = system_prompt + "\n\nUser Message: " + message_with_memories
-
-        # We can construct the messages array or just pass the string if it's simple
-        # In timetable_agent, build_chat_prompt usually returns a string. Let's send a string.
-        full_prompt = prompt
+        # Construct a strict instructional prompt
+        full_prompt = f"### INSTRUCTIONS:\n{system_prompt}\n\n### USER MESSAGE:\n{message}\n\n### ASSISTANT RESPONSE:"
         
         # We need the answer from the LLM
         raw = await self.llm._generate(full_prompt)
@@ -245,15 +247,23 @@ Collected so far: {json.dumps(collected_fields, indent=2)}
                 pass
         
         # FINAL CLEANUP: Ensure NO tags or raw JSON leak into the human reply
-        raw = re.sub(r'<GRID_JSON>.*?</GRID_JSON>', '', raw, flags=re.DOTALL)
-        raw = re.sub(r'<UPDATE_FIELDS>.*?</UPDATE_FIELDS>', '', raw, flags=re.DOTALL)
+        # 1. Scrub ALL XML-like tags (e.g. <CONTEXT_GATHERING>, <UPDATE_FIELDS>, etc.)
+        raw = re.sub(r'<[^>]+>', '', raw)
+        # 2. Scrub markdown code blocks
         raw = re.sub(r'```(?:json)?.*?```', '', raw, flags=re.DOTALL)
-        # Scrub any raw JSON objects that might have leaked without tags
+        # 3. Scrub any raw JSON objects that might have leaked
         raw = re.sub(r'\{[\s\S]*?\}', '', raw).strip()
-        raw = raw.strip()
+        
+        # Fallback for empty responses after scrubbing
+        reply = raw.strip()
+        if not reply:
+            if state == "complete":
+                reply = "Great! I've generated your timetable grid. You can see the preview on the right."
+            else:
+                reply = "Hello! I'm ready to help you set up your timetable. Could you provide the college start and end times?"
 
         return {
-            "reply": raw,
+            "reply": reply,
             "state": state,
             "resolved_grid": resolved_grid,
             "updated_fields": updated_fields
@@ -440,7 +450,7 @@ Collected so far: {json.dumps(collected_fields, indent=2)}
             return
             
         # Basic heuristic for facts worth remembering
-        triggers = ["remember", "note:", "college timing", "starts at", "ends at", "lunch at", "half day", "closed", "saturday", "sunday"]
+        triggers = ["remember", "note:", "college timing", "starts at", "ends at", "lunch", "half day", "closed", "saturday", "sunday", "periods"]
         if any(t in message.lower() for t in triggers):
             try:
                 embedding = self.embedder.embed_query(message)
