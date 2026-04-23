@@ -12,6 +12,13 @@ from typing import Any
 from pydantic import BaseModel, Field, field_validator
 
 
+class UserContext(BaseModel):
+    """Context about the calling user for memory scoping and RAG filtering."""
+    role: str
+    department_id: str | None = None
+    tenant_id: str | None = None
+
+
 # ─── Chat ──────────────────────────────────────────────────────────────────────
 
 class ChatHistoryMessage(BaseModel):
@@ -30,6 +37,7 @@ class TimetableChatRequest(BaseModel):
         default_factory=list,
         description="Previous turns so the LLM has context"
     )
+    user_context: UserContext | None = None
 
     @field_validator("message")
     @classmethod
@@ -65,6 +73,7 @@ class TimetableChatResponse(BaseModel):
 class ScheduleAuditRequest(BaseModel):
     audit_type: str = Field(default="soft_preferences")
     timetable_state: dict[str, Any]
+    user_context: UserContext | None = None
 
 
 class AuditFinding(BaseModel):

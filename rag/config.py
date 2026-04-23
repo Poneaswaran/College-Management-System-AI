@@ -19,9 +19,9 @@ class Settings(BaseSettings):
     LOG_LEVEL: str = "INFO"
 
     INTERNAL_HEADERS_ENABLED: bool = True
-    INTERNAL_SOURCE_VALUE: str = "django-college-management"
+    INTERNAL_SOURCE_VALUE: str = "django-cms-backend"
     INTERNAL_ALLOWED_SOURCES: list[str] = Field(default_factory=list)
-    INTERNAL_API_SECRET: str = "change-me"
+    INTERNAL_API_SECRET: str = "1Nnzm1F7InKkjCPJmJopRMc9oX77ObVvyqKqMkz601j"
 
     MAX_UPLOAD_MB: int = 10
     ALLOWED_EXTENSIONS: list[str] = Field(default_factory=lambda: ["pdf", "txt", "docx"])
@@ -35,7 +35,7 @@ class Settings(BaseSettings):
 
     LLM_PROVIDER: str = "ollama"
     LLM_MODEL: str = "phi3"
-    OLLAMA_URL: str = "http://localhost:11434/api/generate"
+    OLLAMA_URL: str = "http://172.27.112.1:11434/api/generate"
 
     CHROMA_PERSIST_DIR: str = "./chroma_db"
     CHROMA_COLLECTION_NAME: str = "study_material"

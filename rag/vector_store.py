@@ -112,6 +112,62 @@ class ChromaVectorStore:
 
         return output
 
+    def store_memory(
+        self,
+        *,
+        text: str,
+        embedding: list[float],
+        metadata: dict,
+    ) -> str:
+        """Store a natural language fact or rule into the vector store."""
+        import uuid
+        memory_id = f"mem:{uuid.uuid4()}"
+        
+        self.collection.add(
+            ids=[memory_id],
+            embeddings=[embedding],
+            documents=[text],
+            metadatas=[{**metadata, "type": "memory"}],
+        )
+        return memory_id
+
+    def query(
+        self,
+        *,
+        query_embedding: list[float],
+        top_k: int = 5,
+        where: dict | None = None,
+    ) -> list[RetrievalResult]:
+        """Generic query with metadata filtering."""
+        results = self.collection.query(
+            query_embeddings=[query_embedding],
+            n_results=top_k,
+            where=where,
+            include=["documents", "metadatas", "distances"],
+        )
+
+        ids = results.get("ids", [[]])[0]
+        documents = results.get("documents", [[]])[0]
+        metadatas = results.get("metadatas", [[]])[0]
+        distances = results.get("distances", [[]])[0]
+
+        output: list[RetrievalResult] = []
+        for idx, text in enumerate(documents):
+            chunk_id = ids[idx] if idx < len(ids) else f"unknown:{idx}"
+            metadata = metadatas[idx] if idx < len(metadatas) else {}
+            distance = distances[idx] if idx < len(distances) else None
+            score = None if distance is None else float(1 / (1 + distance))
+            output.append(
+                RetrievalResult(
+                    chunk_id=chunk_id,
+                    text=text,
+                    metadata=metadata,
+                    score=score,
+                )
+            )
+
+        return output
+
     def delete_by_vector_document_id(self, vector_document_id: str) -> int:
         records = self.collection.get(
             where={"vector_document_id": vector_document_id},

@@ -1,4 +1,7 @@
 import hmac
+import logging
+
+logger = logging.getLogger(__name__)
 
 from fastapi import Depends, Header
 
@@ -16,6 +19,8 @@ def verify_internal_headers(
     if not settings.INTERNAL_HEADERS_ENABLED:
         return
 
+    logger.info("Verifying internal headers: source=%s", source_header)
+
     if not source_header:
         raise AppError(
             status_code=401,
@@ -25,6 +30,7 @@ def verify_internal_headers(
 
     is_valid_source = source_header in settings.allowed_internal_sources
     if not is_valid_source:
+        logger.warning("Invalid internal source: %s (Allowed: %s)", source_header, settings.allowed_internal_sources)
         raise AppError(
             status_code=403,
             detail="Invalid internal authentication headers",
@@ -44,6 +50,7 @@ def verify_internal_headers(
     is_valid_secret = hmac.compare_digest(secret_header, settings.INTERNAL_API_SECRET)
 
     if not is_valid_secret:
+        logger.warning("Invalid internal secret provided")
         raise AppError(
             status_code=403,
             detail="Invalid internal authentication headers",

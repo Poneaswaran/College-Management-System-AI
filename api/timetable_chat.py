@@ -17,6 +17,7 @@ from timetable_agent.schemas import (
     ScheduleAuditResponse,
     TimetableChatRequest,
     TimetableChatResponse,
+    UserContext,
 )
 from pydantic import BaseModel
 from typing import Any
@@ -61,6 +62,7 @@ async def timetable_chat(
         message=payload.message,
         history=[h.model_dump() for h in payload.history],
         timetable_state=payload.timetable_state,
+        user_context=payload.user_context,
     )
 
     logger.info(
@@ -117,6 +119,47 @@ async def explain_conflicts(
     return result
 
 
+# ── Grid Generation Chat ───────────────────────────────────────────────────────
+
+class GridChatRequest(BaseModel):
+    message: str
+    session_id: str
+    department_name: str
+    collected_fields: dict[str, Any]
+    history: list[dict] = []
+    user_context: UserContext | None = None
+
+class GridChatResponse(BaseModel):
+    reply: str
+    state: str
+    resolved_grid: dict[str, Any] | None = None
+    updated_fields: dict[str, Any] | None = None
+
+@router.post("/grid-chat", response_model=GridChatResponse)
+async def grid_chat(
+    payload: GridChatRequest,
+    _: None = Depends(validate_internal_request),
+    agent=Depends(get_timetable_agent),
+) -> GridChatResponse:
+    """
+    Handles the conversational state machine for timetable grid generation.
+    """
+    logger.info(
+        "grid_chat session_id=%s department=%s message_len=%d",
+        payload.session_id, payload.department_name, len(payload.message)
+    )
+    
+    result = await agent.grid_chat(
+        message=payload.message,
+        history=payload.history,
+        department_name=payload.department_name,
+        collected_fields=payload.collected_fields,
+        user_context=payload.user_context,
+    )
+    
+    return result
+
+
 # ── Explain Why Not ────────────────────────────────────────────────────────────
 
 class ExplainWhyNotRequest(BaseModel):
@@ -129,6 +172,7 @@ class ExplainWhyNotRequest(BaseModel):
     timetable_state: dict[str, Any]
     diagnostic_context: dict[str, Any] = {}
     history: list[dict] = []
+    user_context: UserContext | None = None
 
 
 @router.post("/explain-why-not", response_model=TimetableChatResponse)
@@ -161,6 +205,7 @@ async def explain_why_not(
         history=payload.history,
         timetable_state=payload.timetable_state,
         diagnostic_context=payload.diagnostic_context,
+        user_context=payload.user_context,
     )
 
     logger.info("explain_why_not confidence=%s", result.confidence)
