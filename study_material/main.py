@@ -9,6 +9,7 @@ from api.health import router as health_router
 from api.ingest import router as ingest_router
 from api.query import router as query_router
 from api.timetable_chat import router as timetable_router
+from api.leave_agent import router as leave_router
 from rag.chunker import TextChunker
 from rag.config import Settings, get_settings
 from rag.errors import AppError, build_error_payload
@@ -59,6 +60,7 @@ def create_app(settings: Settings | None = None, rag_service: RAGService | None 
     app.include_router(query_router)
     app.include_router(delete_router)
     app.include_router(timetable_router)
+    app.include_router(leave_router)
 
     @app.middleware("http")
     async def correlation_id_middleware(request: Request, call_next):
